@@ -1,0 +1,7 @@
+streamlit
+pandas
+numpy
+requests
+finance-datareader
+joblib
+python-dotenv
