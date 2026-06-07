@@ -163,7 +163,32 @@ def get_kis_top_trading_value_stocks():
         df['거래대금'], errors='coerce') / 1000000
     return df.sort_values(by='거래대금', ascending=False).drop_duplicates(subset=['종목코드']).dropna()
 
-
+def get_stock_detail_info(stock_code):
+    """
+    특정 종목의 상세 지표(체결강도 등)를 조회합니다.
+    (TR_ID: FHKST01010100 - 주식현재가 시세)
+    """
+    url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-price"
+    headers = get_common_headers("FHKST01010100")
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": stock_code
+    }
+    
+    try:
+        res = requests.get(url, headers=headers, params=params)
+        if res.status_code == 200 and res.json().get('rt_cd') == '0':
+            output = res.json()['output']
+            return {
+                "체결강도": float(output.get('tday_rltv', 0)), # 당일 체결강도
+                "PER": float(output.get('per', 0)),         # PER (참고용)
+                "PBR": float(output.get('pbr', 0))          # PBR (참고용)
+            }
+    except Exception as e:
+        pass
+    
+    # API 오류나 데이터가 없을 경우 기본값 반환
+    return {"체결강도": 0.0, "PER": 0.0, "PBR": 0.0}
 # -----------------------------------------------------------------------------
 # 💾 [데이터 수집용] 백그라운드 데이터 로깅 함수
 # -----------------------------------------------------------------------------
@@ -195,54 +220,55 @@ except ImportError:
     pass
 
 # -----------------------------------------------------------------------------
-# 📊 데이터 세팅 및 필터링 (10점 만점 스케일링 적용)
+# 📊 데이터 세팅 및 필터링 (상세 지표 추가 적용)
 # -----------------------------------------------------------------------------
 df_universe = get_kis_top_trading_value_stocks()
 top_10 = pd.DataFrame()
 
 if not df_universe.empty:
+    # 1. 하락폭이 너무 큰 종목 1차 제외
     df_universe = df_universe[df_universe['등락률'] > -15.0].copy()
     
-    # 1. AI 스코어 원시 점수 계산
-    df_universe['raw_score'] = (df_universe['등락률'] * 0.5) + np.log1p(df_universe['거래대금'])
+    # 2. [추가] 너무 많은 API 호출을 막기 위해 1차 거래대금 상위 30개만 자르기
+    df_top30 = df_universe.head(30).copy()
     
-    # 2. 10점 만점 환산 (현재 시장 1위 종목을 10점 만점으로 두고 상대평가)
-    max_score = df_universe['raw_score'].max()
-    # 만약 max_score가 0 이하일 경우를 대비한 안전장치 포함
+    # 3. [추가] 상위 30개 종목에 대해 디테일 지표(체결강도) 수집
+    detail_data = []
+    for code in df_top30['종목코드']:
+        detail_data.append(get_stock_detail_info(code))
+        time.sleep(0.05)  # API 호출 제한(Rate Limit) 방지를 위한 0.05초 휴식
+        
+    detail_df = pd.DataFrame(detail_data)
+    df_top30 = pd.concat([df_top30.reset_index(drop=True), detail_df.reset_index(drop=True)], axis=1)
+
+    # 4. [추가] 모델 학습을 위해 디테일이 붙은 30개 종목 데이터를 몰래 저장
+    try:
+        save_training_data_to_csv(df_top30) # 앞서 만든 백그라운드 저장 함수 사용
+    except Exception as e:
+        pass 
+
+    # 5. 새로운 AI 스코어 계산 (체결강도를 스코어 공식에 추가 반영 가능!)
+    # 예시: 체결강도가 100 이상(매수 우위)이면 가산점을 줌
+    df_top30['raw_score'] = (df_top30['등락률'] * 0.5) + np.log1p(df_top30['거래대금']) + (df_top30['체결강도'] * 0.01)
+    
+    # 10점 만점 환산
+    max_score = df_top30['raw_score'].max()
     if max_score > 0:
-        df_universe['AI_스코어'] = (df_universe['raw_score'] / max_score * 10).clip(0.1, 10.0).round(1)
+        df_top30['AI_스코어'] = (df_top30['raw_score'] / max_score * 10).clip(0.1, 10.0).round(1)
     else:
-        df_universe['AI_스코어'] = 0.1
+        df_top30['AI_스코어'] = 0.1
     
     # 상태 텍스트
-    df_universe['매매상태'] = df_universe.apply(
+    df_top30['매매상태'] = df_top30.apply(
         lambda r: "🔥 급등 돌파" if r['등락률'] >= 5.0 
         else ("🎯 S급 눌림" if r['등락률'] < 0 and r['거래대금'] > 10000 
         else "🟡 지지선 근접"), axis=1
     )
-    # ... (기존 코드) ...
-if not df_universe.empty:
-    # 1차 필터링: 하락폭이 너무 큰 종목 제외
-    df_universe = df_universe[df_universe['등락률'] > -15.0].copy()
     
-    # 💾 [추가된 부분] 모델 학습을 위해 전체 유니버스 데이터 몰래 저장
-    try:
-        save_training_data_to_csv(df_universe)
-    except Exception as e:
-        pass 
-
-    # 1. AI 스코어 원시 점수 계산 (기존 로직)
-    # ... (이하 기존 Top 10 추출 및 방송용 화면 로직 동일) ...
-    # AI_스코어가 높은 순으로 10개 추출
-    top_10 = df_universe.sort_values(by='AI_스코어', ascending=False).head(10)
-
-    # 💾 화면에 그리기 직전, 추출된 Top 10 데이터를 엑셀(CSV)로 은밀하게 저장합니다.
-    try:
-        save_log_to_csv(top_10)
-    except Exception as e:
-        pass # 파일 저장 실패 시 방송이 터지면 안 되므로 예외 처리
-
-    # AI 점수 및 현재가 포맷 (UI 표시용 - % 대신 '점' 단위 사용)
+    # AI_스코어가 높은 순으로 10개 추출하여 화면에 송출
+    top_10 = df_top30.sort_values(by='AI_스코어', ascending=False).head(10)
+    
+    # UI 표시용 포맷팅
     top_10['기대수익_str'] = top_10['AI_스코어'].apply(lambda x: f"{x:.1f}점")
     top_10['현재가_str'] = top_10['현재가'].apply(lambda x: f"{int(x):,}원")
 
