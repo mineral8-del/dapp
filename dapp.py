@@ -244,7 +244,8 @@ else:
                 
             valid_df['매매상태'] = valid_df.apply(
                 lambda r: "🔥 급등 돌파" if r['등락률'] >= 5.0 
-                else ("🎯 S급 눌림" if r['등락률'] < 0 else "🟡 AI 픽"), axis=1
+                else ("🎯 S급 눌림" if r['등락률'] < 0 
+                else "🟡 AI 픽"), axis=1
             )
             
             # 상위 10개 추출
