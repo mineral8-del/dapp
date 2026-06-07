@@ -2,6 +2,9 @@ streamlit
 pandas
 numpy
 requests
-finance-datareader
-joblib
 python-dotenv
+ta
+lightgbm
+scikit-learn
+joblib
+streamlit-autorefresh
