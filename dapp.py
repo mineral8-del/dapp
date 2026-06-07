@@ -165,27 +165,22 @@ def get_kis_top_trading_value_stocks():
 
 
 # -----------------------------------------------------------------------------
-# 💾 [핵심 추가] 데이터 로깅 함수 (CSV 자동 저장)
+# 💾 [데이터 수집용] 백그라운드 데이터 로깅 함수
 # -----------------------------------------------------------------------------
-def save_log_to_csv(top_10_df):
-    """현재 화면에 뜬 10개 종목을 CSV 파일로 매일 누적 저장합니다."""
+def save_training_data_to_csv(df_universe):
+    """모델 학습을 위해 필터링된 전체 종목의 스냅샷을 백그라운드에서 저장합니다."""
     today_str = datetime.now(KST).strftime('%Y%m%d')
-    file_name = f"ai_stock_log_{today_str}.csv"
+    file_name = f"training_data_{today_str}.csv"
     current_time_str = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')
 
-    # 저장용 데이터프레임 가공
-    save_df = top_10_df.copy()
+    save_df = df_universe.copy()
     save_df.insert(0, '포착시간', current_time_str)
-    save_df.insert(1, '순위', range(1, len(save_df) + 1))
     
-    # 엑셀에서 보기 편하게 컬럼 순서 재배치 (10점 만점 컬럼명으로 변경)
-    cols = ['포착시간', '순위', '종목명', '종목코드', '현재가', '등락률', '거래대금', 'AI_스코어', '매매상태']
+    # 향후 피처(Feature)로 사용할 필수 데이터만 추출
+    cols = ['포착시간', '종목명', '종목코드', '현재가', '등락률', '거래대금']
     save_df = save_df[cols]
 
-    # 파일이 존재하지 않으면 헤더(컬럼명)를 포함하여 생성, 존재하면 아래에 데이터만 추가(append)
     write_header = not os.path.exists(file_name)
-    
-    # utf-8-sig 인코딩을 사용해야 엑셀에서 한글이 깨지지 않습니다.
     save_df.to_csv(file_name, mode='a', index=False, encoding='utf-8-sig', header=write_header)
 
 
@@ -225,7 +220,19 @@ if not df_universe.empty:
         else ("🎯 S급 눌림" if r['등락률'] < 0 and r['거래대금'] > 10000 
         else "🟡 지지선 근접"), axis=1
     )
+    # ... (기존 코드) ...
+if not df_universe.empty:
+    # 1차 필터링: 하락폭이 너무 큰 종목 제외
+    df_universe = df_universe[df_universe['등락률'] > -15.0].copy()
     
+    # 💾 [추가된 부분] 모델 학습을 위해 전체 유니버스 데이터 몰래 저장
+    try:
+        save_training_data_to_csv(df_universe)
+    except Exception as e:
+        pass 
+
+    # 1. AI 스코어 원시 점수 계산 (기존 로직)
+    # ... (이하 기존 Top 10 추출 및 방송용 화면 로직 동일) ...
     # AI_스코어가 높은 순으로 10개 추출
     top_10 = df_universe.sort_values(by='AI_스코어', ascending=False).head(10)
 
