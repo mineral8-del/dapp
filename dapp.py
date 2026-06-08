@@ -180,11 +180,11 @@ def get_live_ai_features(stock_code):
     current_time = datetime.now(KST).strftime("%H%M%S")
     
     params = {
+        "FID_ETC_CLS_CODE": "",           # 💡 [추가] 필수 누락 파라미터
         "FID_COND_MRKT_DIV_CODE": "J",
         "FID_INPUT_ISCD": stock_code,
         "FID_INPUT_HOUR_1": current_time, 
         "FID_PW_DATA_INCU_YN": "Y"
-    }
     
     try:
         res = req_session.get(url, headers=headers, params=params, timeout=5)
