@@ -185,7 +185,7 @@ def get_live_ai_features(stock_code):
         "FID_INPUT_ISCD": stock_code,
         "FID_INPUT_HOUR_1": current_time, 
         "FID_PW_DATA_INCU_YN": "Y"
-    
+    }
     try:
         res = req_session.get(url, headers=headers, params=params, timeout=5)
         
