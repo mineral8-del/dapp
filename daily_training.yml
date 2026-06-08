@@ -1,0 +1,41 @@
+name: 🤖 Daily AI Model Training
+
+on:
+  schedule:
+    # 💡 UTC 시간 기준 06:40 (한국 시간 기준 오후 3시 40분)에 실행. 월~금요일만 작동.
+    - cron: '40 6 * * 1-5'
+  workflow_dispatch: # 수동으로 강제 실행하고 싶을 때 쓰는 버튼 활성화
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # GitHub이 빌려주는 무료 리눅스 컴퓨터
+
+    steps:
+    - name: 📥 내 코드 가져오기 (Checkout)
+      uses: actions/checkout@v3
+
+    - name: 🐍 파이썬 설치
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10' # 사용하는 파이썬 버전에 맞추세요
+
+    - name: 📦 필요 라이브러리 설치
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 🏭 AI 데이터 수집 및 훈련 공장 가동!
+      env:
+        APP_KEY: ${{ secrets.APP_KEY }}
+        APP_SECRET: ${{ secrets.APP_SECRET }}
+      run: |
+        python train_model.py
+
+    - name: 💾 결과물(뇌와 데이터)을 GitHub에 덮어쓰기 (Commit & Push)
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add master_dataset.csv ai_stock_model.pkl ai_stock_scaler.pkl
+        # 변경사항이 있을 때만 업데이트
+        git commit -m "🤖 Auto-update: AI 훈련 및 데이터 누적 완료 [$(date +'%Y-%m-%d')]" || echo "No changes to commit"
+        git push
