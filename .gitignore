@@ -1,0 +1,15 @@
+# 보안 파일
+.env
+
+# 데이터 파일
+*.csv
+*.xlsx
+
+# 인공지능 모델 파일
+*.pkl
+*.h5
+*.pt
+
+# 기타 파이썬 캐시 파일
+__pycache__/
+.ipynb_checkpoints/
